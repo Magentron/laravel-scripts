@@ -1,5 +1,5 @@
 {{--
-  --	Laravel specific Makefile
+  --	laravel-scripts - Envoy deployment script for Laravel projects
   --
   --	@author 	Jeroen Derks <jeroen@derks.it>
   --	@since		2017/May/23

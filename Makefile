@@ -1,5 +1,5 @@
 #
-#	Laravel specific Makefile
+#	laravel-scripts - Laravel specific Makefile
 #
 #	@author 	Jeroen Derks <jeroen@derks.it>
 #	@since		2017/May/23

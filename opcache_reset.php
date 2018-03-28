@@ -1,6 +1,6 @@
 <?php
 	/**
-	 *	Laravel specific Makefile
+	 *	laravel-scripts - reset PHP opcode cache on server
 	 *
 	 *	@author 	Jeroen Derks <jeroen@derks.it>
 	 *	@since		2017/Nov/02
