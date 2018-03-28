@@ -1,0 +1,19 @@
+{
+    "name": "magentron/laravel-scripts",
+    "description": "Useful scripts etc. for Laravel",
+    "type": "library",
+	"keywords": ["laravel"],
+	"homepage": "https://github.com/Magentron/laravel-scripts",
+	"time": "2018-03-28 18:46:37",
+    "license": "GPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Jeroen Derks",
+            "email": "jeroen@derks.it",
+			"homepage": "https://www.derks.it/",
+			"role": "Developer"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {}
+}
