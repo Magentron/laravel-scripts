@@ -83,6 +83,9 @@
 	$path          = getenv('DEPLOY_PATH');
 	$slack         = getenv('DEPLOY_SLACK_WEBHOOK');
 
+	$composer      = getenv('DEPLOY_COMPOSER') ?: 'composer';
+	$disable_log   = getenv('DEPLOY_DISABLE_LOG');
+	$disable_log   = 'false' === $disable_log ? false : (boolean) $disable_log;
 	$maxmind_dl    = getenv('DEPLOY_DL_MAXMIND');
 	$maxmind_dl    = 'false' === $maxmind_dl ? false : (boolean) $maxmind_dl;
 	$opcache_reset = getenv('DEPLOY_OPCACHE_RESET');
@@ -106,7 +109,7 @@
 	$current_release_dir = last($output);
 	fprintf(STDERR, " => %s\n", $current_release_dir); fflush(STDERR);
 
-	define('CMD_LOG_START', 'exec> >(sh -c "while read line;do echo \`date\` \"\$line\";done|tee -a ' . escapeshellarg($log_file) . '") 2> >(sh -c "while read line;do echo \`date\` stderr: \"\$line\";done|tee -a ' . escapeshellarg($log_file) . '" >&2)');
+	define('CMD_LOG_START', $disable_log ? '' : 'exec> >(sh -c "while read line;do echo \`date\` \"\$line\";done|tee -a ' . escapeshellarg($log_file) . '") 2> >(sh -c "while read line;do echo \`date\` stderr: \"\$line\";done|tee -a ' . escapeshellarg($log_file) . '" >&2)');
 
 	if (!$repository) {
 		// make temporary checkout & copy to deployment server
@@ -123,9 +126,20 @@
 		$command = sprintf('ssh %s mkdir -p "%s"', escapeshellarg($server), escapeshellarg($new_release_dir));
 		exec($command, $output);
 
+		// checking if git supports '-j' flag
+		$use_j   = true;
+		$command = 'git clone -j8 2>&1';
+		$prefix  = get_prefix($hostname);
+
+		fprintf(STDERR, "{$prefix}executing command: %s\n", $command); fflush(STDERR);
+		if (strpos(`$command`, 'error: unknown switch')) {
+			fprintf(STDERR, "{$prefix}   => Warning: this host does not support 'git clone -j'!\n", $command); fflush(STDERR);
+			$use_j = false;
+		}
+
 		// clone repository
-		$command_format = 'sh -c "(%1$s umask 002; %1$s git clone --recursive -j8 -b %2$s . %3$s && %1$s rsync -zaSHx %3$s/ %4$s/); %1$s rm -rf %3$s" 2>&1';
-		$command        = sprintf($command_format, $runner, escapeshellarg($branch), escapeshellarg($temp_checkout_dir), escapeshellarg($destination));
+		$command_format = 'sh -c "(%1$s umask 002; %1$s git clone --recursive %2$s -b %3$s . %4$s && %1$s rsync --exclude=.git\\* --exclude=Envoy.blade.php --exclude=Makefile -zaSHx %4$s/ %5$s/); %1$s rm -rf %4$s" 2>&1';
+		$command        = sprintf($command_format, $runner, $use_j ? '-j8' : '', escapeshellarg($branch), escapeshellarg($temp_checkout_dir), escapeshellarg($destination));
 
 		$prefix = get_prefix($hostname);
 		fprintf(STDERR, "{$prefix}executing command: %s\n", $command); fflush(STDERR);
@@ -199,6 +213,7 @@
 	{{ CMD_LOG_START }}
 	echo " - Initializing of '{{ $app_name }}' started on {{ $date }} on environment: {{ $env }}: {{ $server }}"
 	if [ ! -d {{ $current_dir }} ]; then
+		[ -d {{ $releases_dir }} ] || {{ $runner }} mkdir -p {{ $releases_dir }}
 		{{ $runner }} mv {{ $new_release_dir }}/storage {{ $app_dir }}/storage
 		{{ $runner }} cp {{ $new_release_dir }}/.env.example {{ $app_dir }}/.env
 		echo "  +- deployment path initialised, configure {{ $app_dir }}/.env and run 'envoy run deploy --env={{ $env }}' to deploy."
@@ -212,11 +227,24 @@
 	{{ CMD_LOG_START }}
 	echo "Starting deployment task '{{ $task }}' of '{{ $app_name }}' on {{ $date }} on {{ $env }}: {{ $server }}{{ $dry_run ? ' [DRY-RUN]' : '' }}"
 	echo " - Cloning repository ..."
-	[ -d {{ $releases_dir }} ] || {{ $runner }} mkdir {{ $releases_dir }}
+	[ -d {{ $releases_dir }} ] || {{ $runner }} mkdir -p {{ $releases_dir }}
+	echo "  +- created release directory ..."
 	@if ($repository)
-		{{ $runner }} git clone --recursive -j8 --depth 1 -b {{ $branch }} {{ $repository }} {{ $new_release_dir }}
-		echo "   +- repository cloned"
+		use_j=true
+		if git clone -j8 2>&1 | fgrep 'error: unknown switch' > /dev/null 2>&1; then
+			echo "  +- warning: environment '{{ $env }}' does not support 'git clone -j' !!!"
+			use_j=false
+		else
+			echo "  +- checked that git supports '-j' flag ..."
+		fi
+		if $use_j; then
+			{{ $runner }} git clone --recursive -j8 --depth 1 -b {{ $branch }} {{ $repository }} {{ $new_release_dir }}
+		else
+			{{ $runner }} git clone --recursive --depth 1 -b {{ $branch }} {{ $repository }} {{ $new_release_dir }}
+		fi
+		echo "  +- repository cloned"
 	@endif
+	chmod 751 {{ $new_release_dir }}
 @endtask
 
 @task('deployment_links')
@@ -239,12 +267,12 @@
 	{{ CMD_LOG_START }}
 	echo " - Running composer ..."
 	@if ( $current_release_dir )
-	{{ $runner }} cp -a {{ $current_release_dir }}/vendor {{ $new_release_dir }}/
+	{{ $runner }} rsync -aSHAX {{ $current_release_dir }}/vendor {{ $new_release_dir }}/ || true
 	echo "  +- copied vendor"
 	@endif
 	{{ $runner }} cd {{ $new_release_dir }}
 	echo "  +- running composer ..."
-	{{ $runner }} composer install --no-interaction {{ $is_dev ? '--no-dev' : '' }} --prefer-dist --no-scripts -q -o
+	{{ $runner }} {{ $composer }} install --no-interaction {{ $is_dev ? '--no-dev' : '' }} --prefer-dist --no-scripts -q -o
 	echo "  +- composer installed" 
 @endtask
 
@@ -294,9 +322,9 @@
 	{{ $runner }} php {{ $current_dir }}/artisan route:cache || true  # Create a route cache file for faster route registration (fails with Closure routes)
 	{{ $runner }} php {{ $current_dir }}/artisan config:cache         # Create a cache file for faster configuration loading
 	{{ $runner }} php {{ $current_dir }}/artisan config:cache         # 2nd time to fix incorrect database credentials???
-	{{ $runner }} php {{ $current_dir }}/artisan storage:link         # link storage/public
+	{{ $runner }} php {{ $current_dir }}/artisan storage:link || true # link storage/public (might fail for older Laravel versions)
 	echo "  +- cache generated"
-	echo "  +- published '{{ $app_name }}'{{ '@' }}{{ $branch }} to {{ $env }}"
+	echo "  +- published '{{ $app_name }}'{{ '@' }}{{ $branch }} to {{ $env }} at `date`"
 @endtask
 
 @task('deployment_cleanup')

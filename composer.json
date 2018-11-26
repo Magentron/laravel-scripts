@@ -4,7 +4,7 @@
     "type": "library",
 	"keywords": ["laravel"],
 	"homepage": "https://github.com/Magentron/laravel-scripts",
-	"time": "2018-03-28 18:46:37",
+	"time": "2018-11-26 16:54:04",
     "license": "GPL-3.0-or-later",
     "authors": [
         {
@@ -15,5 +15,20 @@
         }
     ],
     "minimum-stability": "dev",
-    "require": {}
+    "require": {},
+	"autoload": {
+		"psr-4": {
+			"Magentron\\LaravelScripts\\": "src"
+		},
+		"files": [
+			"helpers.php"
+		]
+	},
+	"extra": {
+		"laravel": {
+			"providers": [
+				"Magentron\\LaravelScripts\\Providers\\LaravelScriptsServiceProvider"
+			]
+		}
+	}
 }
