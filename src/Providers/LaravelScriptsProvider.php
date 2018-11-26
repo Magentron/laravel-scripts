@@ -1,13 +1,10 @@
 <?php
 
-namespace Develpr\AlexaApp\Provider;
+namespace Magentron\LaravelScripts\Providers;
 
-use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Support\ServiceProvider;
-use ReflectionClass;
-use Route;
 
-class LaravelServiceProvider extends ServiceProvider
+class LaravelScriptsServiceProvider extends ServiceProvider
 {
 	public function boot()
 	{
