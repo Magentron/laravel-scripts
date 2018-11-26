@@ -24,6 +24,10 @@
 	 *	with laravel-scripts.  If not, see <http://www.gnu.org/licenses/>.
 	 */
 
+	use Illuminate\Support\Debug\Dumper;
+	use Symfony\Component\VarDumper\Cloner\VarCloner;
+	use Symfony\Component\VarDumper\Dumper\CliDumper;
+
 	if (! function_exists('dumpVariables')) {
 		/**
 		 * Dump the passed variables.
