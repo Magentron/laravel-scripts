@@ -38,6 +38,7 @@ OS:=$(shell uname -s)
 NPROCS:=$(shell [ Darwin = $(OS) ] && sysctl -n hw.ncpu || nproc)
 PHP=php -d memory_limit=256M $(PHP_EXTRA)
 PHPUNIT=$(PHP) vendor/bin/phpunit -d xdebug.max_nesting_level=250 -d memory_limit=1024M $(PHPUNIT_EXTRA)
+PORT=8000
 PRETEND=--pretend
 SCOUT_MODELS=
 PHP_SRC=app bootstrap/app.php config database resources routes public/*.php tests
@@ -285,6 +286,12 @@ gentrans-en:
 #
 #	Shortcuts
 #
+artisan a:
+	$(ARTISAN) $(EXTRA)
+
+serve s:
+	$(ARTISAN) serve --port $(PORT) $(EXTRA) > storage/logs/serve.log 2>&1 &
+
 clean: clear
 	rm -f Envoy[0-9a-f]*.php
 
@@ -296,6 +303,14 @@ migrate:
 
 route:
 	$(ARTISAN) route:list
+
+routes r:	routes.txt
+	@cat routes.txt
+
+routes.txt:	.routes.txt.
+
+.routes.txt.:
+	@$(ARTISAN) route:list > routes.txt
 
 clear cache-clear clear-cache:
 	$(ARTISAN) cache:clear
