@@ -34,13 +34,16 @@ ENVIRONMENT=
 LANG=nl
 NPM_ASSETS=public/css/app.css public/js/app.js
 NPM_ENV=development
+OS:=$(shell uname -s)
+NPROCS:=$(shell [ Darwin = $(OS) ] && sysctl -n hw.ncpu || nproc)
 PHP=php -d memory_limit=256M $(PHP_EXTRA)
 PHPUNIT=$(PHP) vendor/bin/phpunit -d xdebug.max_nesting_level=250 -d memory_limit=1024M $(PHPUNIT_EXTRA)
 PRETEND=--pretend
 SCOUT_MODELS=
-SRCS= Makefile README.md webpack.mix.js composer.json package-lock.json package.json Envoy.blade.php \
-	  opcache_reset.php server.php phpunit.xml app bootstrap/app.php bootstrap/autoload.php config \
-	  database model resources routes tests
+PHP_SRC=app bootstrap/app.php config database resources routes public/*.php tests
+SRC= Makefile README.md webpack.mix.js composer.json package-lock.json package.json Envoy.blade.php \
+	 opcache_reset.php server.php phpunit.xml app bootstrap/app.php bootstrap/autoload.php config \
+	 database model resources routes tests
 USER_AGENT:=$(shell $(CURL) --version | head -1 | awk '{printf("%s/%s", $$1, $$2);}')
 WGET=wget --no-check-certificate $(WGET_EXTRA)
 WRITABLE_DIRS=storage/*/* bootstrap/cache
@@ -51,6 +54,9 @@ TEMP_DEPLOY_DIR := $(shell echo .deploy.tmp.$$$$)
 
 all:	rw
 
+#
+#	Setup
+#
 rw:
 	sudo chmod -R g+w $(WRITABLE_DIRS)
 	sudo chown -R $(USER):$(WWW_GROUP_ID) $(WRITABLE_DIRS)
@@ -84,6 +90,12 @@ init-elastic:
 	time $(ARTISAN) db:seed --class=DummyDataSeeder
 	[ -z $(SCOUT_MODELS) ] || for model in $(SCOUT_MODELS); do $(ARTISAN) scout:import "$$model"; done
 
+get-envoy:
+	$(WGET) -N https://raw.githubusercontent.com/papertank/envoy-deploy/master/Envoy.blade.php
+
+#
+#	Deployment
+#
 deploy-checkout-copy-manual:
 	@[ ! -z '$(BRANCH)' -a ! -z '$(DST)' ] || (echo "missing BRANCH=... or DST=..." 1>&2; exit 1)
 	(rm -rf $(TEMP_DEPLOY_DIR) && git clone --recursive -j8 -b $(BRANCH) . $(TEMP_DEPLOY_DIR) && rsync -zaSHx $(TEMP_DEPLOY_DIR)/ $(DST)/); rm -rf $(TEMP_DEPLOY_DIR)
@@ -129,6 +141,15 @@ ant build: .build.dummy.
 .build.dummy.:
 	time $(ANT) $(EXTRA) $(ANT_TARGET)
 
+#
+#	Docker
+#
+docker-image:
+	docker build --squash .
+
+#
+#	Testing
+#
 test:	rw clear-cache autodump
 	time $(PHPUNIT) $(EXTRA)
 
@@ -167,6 +188,9 @@ test-elastic testelastic:
 test-migrate:
 	time $(ARTISAN) --env=testing migrate $(EXTRA)
 
+#
+#	NPM
+#
 $(NPM_ASSETS):	Makefile webpack.mix.js resources/assets/sass/*.scss resources/assets/js/*.js
 	time npm run $(NPM_ENV)
 
@@ -184,12 +208,10 @@ npm-watch:
 npm-prod npm-production:
 	@make npm-dev NPM_ENV=production
 
-get-envoy:
-	$(WGET) -N https://raw.githubusercontent.com/papertank/envoy-deploy/master/Envoy.blade.php
 
-docker-image:
-	docker build --squash .
-
+#
+#	Lint
+#
 lint lint-parallel:	
 	@make -j4 jsonlint xmllint phplint bladelint
 
@@ -213,6 +235,42 @@ xmllint xml-lint lint-xml lintxml:
 	@echo lint - XML...
 	@find *.xml app bootstrap public resources routes tests -name '*.xml' | while read file; do nice -20 xmllint --noout "$$file"; done
 
+#
+#	Static code analysis
+#
+loc:
+	@echo making fast copy...
+	@rm -rf build/src
+	@mkdir -p build/src
+	@for i in $(SRC) ; do ln -s ../../"$$i" build/src/; done
+	@echo running sloccount...
+	#sloccount --datadir .sloccount --follow build/src
+	@sloccount --addlang js --addlang makefile --addlang sql --addlangall --follow $(EXTRA) -- build/src/ 2>&1 | fgrep -v 'Warning! Unclosed PHP file'
+	@echo running cloc...
+	@cloc --follow-links build/src
+
+static-analysis static-analyzis static analysis analyzis analyse analyze stat anal:	phpcpd phpcs phploc phpmd phpstan
+
+phpcpd:
+	vendor/bin/phpcpd $(EXTRA) $(PHP_SRC) 
+
+phpcs:
+	vendor/bin/phpcs --standard=PSR2 -p --parallel=$(NPROCS) -s $(EXTRA) $(PHP_SRC) 
+
+phploc:
+	vendor/bin/phploc $(EXTRA) $(PHP_SRC) 
+
+phpmd:
+	for ruleset in cleancode codesize controversial design naming unusedcode; do \
+		vendor/bin/phpmd $(PHP_SRC) ansi $$ruleset $(EXTRA); \
+	done
+
+phpstan:
+	vendor/bin/phpstan analyse $(EXTRA) $(PHP_SRC)
+
+#
+#	Translations
+#
 find-texts:
 	@egrep -Er '>[A-Z][a-z]|^\s*[A-Z][a-z][A-Za-z0-9 _.-]*\s*$$' resources/views/ $(CMD_EXTRA)
 
@@ -224,17 +282,9 @@ gentrans:
 gentrans-en:
 	@make gentrans LANG=en
 
-loc:
-	@echo making fast copy...
-	@rm -rf build/src
-	@mkdir -p build/src
-	@for i in $(SRCS) ; do ln -s ../../"$$i" build/src/; done
-	@echo running sloccount...
-	#sloccount --datadir .sloccount --follow build/src
-	@sloccount --addlang js --addlang makefile --addlang sql --addlangall --follow $(EXTRA) -- build/src/ 2>&1 | fgrep -v 'Warning! Unclosed PHP file'
-	@echo running cloc...
-	@cloc --follow-links build/src
-
+#
+#	Shortcuts
+#
 clean: clear
 	rm -f Envoy[0-9a-f]*.php
 

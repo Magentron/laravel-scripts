@@ -15,8 +15,7 @@
         }
     ],
     "minimum-stability": "dev",
-    "require": {},
-	"autoload": {
+    "autoload": {
 		"psr-4": {
 			"Magentron\\LaravelScripts\\": "src"
 		},
@@ -30,5 +29,13 @@
 				"Magentron\\LaravelScripts\\Providers\\LaravelScriptsServiceProvider"
 			]
 		}
-	}
+	},
+    "require-dev": {
+        "phpstan/phpstan": "0.12.x-dev",
+        "friendsofphp/php-cs-fixer": "9999999-dev",
+        "phpmd/phpmd": "9999999-dev",
+        "squizlabs/php_codesniffer": "4.0.x-dev",
+        "sebastian/phpcpd": "6.0.x-dev",
+        "phploc/phploc": "7.0.x-dev"
+    }
 }
