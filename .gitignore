@@ -1,6 +1,7 @@
 vendor/
 node_modules/
 npm-debug.log
+routes.txt
 
 # Laravel 4 specific
 bootstrap/compiled.php
